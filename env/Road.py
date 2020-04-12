@@ -25,6 +25,5 @@ class Road:
         self.laneNum = traci.edge.getLaneNumber(self.entranceEdgeID)
         self.laneWidth = traci.lane.getWidth(self.entranceEdgeLaneID_0)
         self.laneLength = traci.lane.getLength(self.entranceEdgeLaneID_0)
-
         self.rampEntranceJunction = traci.junction.getPosition('rampEntrance')
         self.startJunction = list(traci.junction.getPosition('start'))

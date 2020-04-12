@@ -1,10 +1,12 @@
 import sys
 import os
-import random
+os.environ["SUMO_HOME"] = "/usr/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
 
+print(os.environ["SUMO_HOME"])
 if 'SUMO_HOME' in os.environ:
     tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
+    print(tools)
     sys.path.append(tools)
     print('success')
 else:
@@ -29,7 +31,7 @@ def normal(env):
 
         obs, rwd, done, info = env.step(action=0)
         if done is True and info['resetFlag'] == 1:
-            env.close()
+            env.reset()
 
         # f.write('%s, %s, %s, %s, %s, %s, %s\n' % (egoid, env.ego.pos_longi,
         #                                   env.ego.curr_leader.pos_longi - env.ego.pos_longi,
@@ -130,22 +132,22 @@ def IDMCtrl(env):
 
 
 def badLongiCtrl(env):
-    f = open('data/lateralCtr.csv', 'a')
-    f.write('egoid, lanePos, dis2leader, speed, acce\n')
+    # f = open('data/lateralCtr.csv', 'a')
+    # f.write('egoid, lanePos, dis2leader, speed, acce\n')
 
     egoid = 'lane1.2'
-    env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3)
+    env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3, is_gui=True)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     for step in range(10000):
-        action = env.decision()
+        action = 5
         obs, rwd, done, info = env.step(action)
 
         if done and info['resetFlag']:
-            env.reset(egoid)
+            env.reset(egoid, is_gui=False)
 
         #f.write('%s, %s, %s, %s, %s\n' % (egoid, obs[0][0], obs[1][0]-obs[0][0], obs[0][1], traci.vehicle.getAcceleration(egoid)))
-        f.flush()
+        # f.flush()
 
 
 def doubleCtrl(env):
@@ -183,8 +185,8 @@ if __name__ == '__main__':
 
     env = LaneChangeEnv()
 
-    #badLongiCtrl(env)
+    badLongiCtrl(env)
     #IDMCtrl(env)
-    normal(env)
+    # normal(env)
     #changeLane(env)
     #doubleCtrl(env)

@@ -16,6 +16,8 @@ class Vehicle:
         # general properties
         self.veh_id = veh_id
         self.curr_laneIndex = traci.vehicle.getLaneIndex(self.veh_id)
+        self.length = traci.vehicle.getLength(self.veh_id)
+        self.width = traci.vehicle.getWidth(self.veh_id)
         # longitudinal properties
         self.pos_longi = traci.vehicle.getLanePosition(self.veh_id)
         self.speed = traci.vehicle.getSpeed(veh_id)

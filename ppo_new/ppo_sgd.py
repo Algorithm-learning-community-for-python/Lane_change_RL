@@ -9,8 +9,6 @@ from collections import deque
 import random
 import sys, os
 
-sys.stdout = open('../logs/logg.txt', 'w')
-
 
 def traj_segment_generator(pi, env, horizon, stochastic):
     t = 0
