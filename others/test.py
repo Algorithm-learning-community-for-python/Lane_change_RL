@@ -1,6 +1,6 @@
 import sys
 import os
-os.environ["SUMO_HOME"] = "/usr/share/sumo"
+os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.2.0/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
 
 print(os.environ["SUMO_HOME"])
@@ -135,16 +135,17 @@ def badLongiCtrl(env):
     # f = open('data/lateralCtr.csv', 'a')
     # f.write('egoid, lanePos, dis2leader, speed, acce\n')
 
-    egoid = 'lane1.2'
+    egoid = 'lane1.4'
     env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3, is_gui=True)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     for step in range(10000):
-        action = 5
+        action = 6
         obs, rwd, done, info = env.step(action)
 
         if done and info['resetFlag']:
-            env.reset(egoid, is_gui=False)
+            env.reset(egoid, is_gui=True)
+            traci.vehicle.setColor(egoid, (255, 69, 0))
 
         #f.write('%s, %s, %s, %s, %s\n' % (egoid, obs[0][0], obs[1][0]-obs[0][0], obs[0][1], traci.vehicle.getAcceleration(egoid)))
         # f.flush()
