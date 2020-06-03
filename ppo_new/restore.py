@@ -20,7 +20,7 @@ def main():
     """
     restore latest model from ckpt
     """
-    model_dir = '../tf_models/trial8'
+    model_dir = '../tf_models/trial11'
     latest_checkpoint = tf.train.latest_checkpoint(model_dir)
     model_path = latest_checkpoint
 

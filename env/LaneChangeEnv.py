@@ -99,7 +99,7 @@ class LaneChangeEnv(gym.Env):
         """
         # todo difference
         if veh is not None:
-            self.observation[name*4+0+1] = (veh.pos_longi - self.ego.pos_longi) / 479.6  # todo 239.8
+            self.observation[name*4+0+1] = (veh.pos_longi - self.ego.pos_longi) / 239.8  # todo 239.8
             self.observation[name*4+1+1] = (veh.speed - self.ego.speed) / 30.0
             self.observation[name*4+2+1] = (veh.pos_lat - self.ego.pos_lat) / 3.2
             self.observation[name*4+3+1] = veh.acce
@@ -112,7 +112,6 @@ class LaneChangeEnv(gym.Env):
             else:
                 self.observation[name*4+2+1] = (1.6 - self.ego.pos_lat) / 3.2
             self.observation[name*4+3+1] = 0
-
 
     def updateObservation(self):
         self.observation[0] = (self.ego.pos_longi - 239.8) / 239.8
@@ -173,7 +172,7 @@ class LaneChangeEnv(gym.Env):
         w_effi = 1
         w_time = 0.0  # 0.01 0
         w_speed = 0.01
-        w_safety = 0.15  # 1.5 0.15
+        w_safety = 1.5  # 1.5 0.15
         weights = np.array([w_comf, w_effi, w_time, w_speed, w_safety])
         # reward for comfort
         if act_longi == 1:
@@ -181,11 +180,11 @@ class LaneChangeEnv(gym.Env):
         else:
             r_comf = -1
         # reward for efficiency
-        # r_effi = - self.ego.dis2tgtLane
-        if act_lat == 2:
-            r_effi = 1
-        else:
-            r_effi = -1
+        r_effi = - self.ego.dis2tgtLane
+        # if act_lat == 2:
+        #     r_effi = 1
+        # else:
+        #     r_effi = -1
         if self.is_final_success:
             r_effi += 50
         # reward for elapsed time
@@ -236,6 +235,7 @@ class LaneChangeEnv(gym.Env):
             print("egoid: ", self.ego.veh_id)
             done = True
             self.is_collision = True
+            done = True
         return done
 
     def is_to_crash(self, action_longi, action_lat, longi_safety_dis=5, lat_safety_dis=0.2):
