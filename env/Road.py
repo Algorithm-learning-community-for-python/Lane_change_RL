@@ -22,6 +22,8 @@ class Road:
         self.rampExitRouteID = 'ramp_exit'
 
         self.entranceEdgeLaneID_0 = self.entranceEdgeID + '_0'
+        self.speedLimit = traci.lane.getMaxSpeed(self.entranceEdgeLaneID_0)
+
         self.laneNum = traci.edge.getLaneNumber(self.entranceEdgeID)
         self.laneWidth = traci.lane.getWidth(self.entranceEdgeLaneID_0)
         self.laneLength = traci.lane.getLength(self.entranceEdgeLaneID_0)

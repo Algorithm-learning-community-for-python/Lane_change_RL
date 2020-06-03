@@ -15,6 +15,7 @@ class Vehicle:
     def __init__(self, veh_id, rd):
         # general properties
         self.veh_id = veh_id
+        self.speedLimit = traci.vehicle.getAllowedSpeed(self.veh_id)
         self.curr_laneIndex = traci.vehicle.getLaneIndex(self.veh_id)
         self.length = traci.vehicle.getLength(self.veh_id)
         self.width = traci.vehicle.getWidth(self.veh_id)

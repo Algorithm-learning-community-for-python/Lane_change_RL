@@ -1,6 +1,6 @@
 import sys
 import os
-os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.2.0/share/sumo"
+os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.6.0/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
 
 print(os.environ["SUMO_HOME"])
@@ -47,7 +47,7 @@ def changeLane(env):
     for i in range(10000):
         # ss += 1
         print(env.ego.pos_lat)
-        obs, rwd, done, info = env.step(action=0*3+1)
+        obs, rwd, done, info = env.step(action=0*3+2)
         if done is True and info['resetFlag'] == 1:
             env.close()
 
@@ -140,10 +140,10 @@ def badLongiCtrl(env):
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     for step in range(10000):
-        action = 6
+        action = 2
         obs, rwd, done, info = env.step(action)
 
-        if done and info['resetFlag']:
+        if done:
             env.reset(egoid, is_gui=True)
             traci.vehicle.setColor(egoid, (255, 69, 0))
 

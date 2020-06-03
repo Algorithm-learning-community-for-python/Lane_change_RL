@@ -22,6 +22,9 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
 
     cur_ep_ret_detail = 0
     ep_rets_detail = []
+    ep_num_danger = []
+    ep_is_success = []
+    ep_is_collision = []
 
     # Initialize history arrays
     obs = np.array([ob for _ in range(horizon)])
@@ -41,13 +44,17 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
         if t > 0 and t % horizon == 0:
             yield {"ob" : obs, "rew" : rews, "vpred" : vpreds, "new" : news,
                     "ac" : acs, "prevac" : prevacs, "nextvpred": vpred * (1 - new),
-                    "ep_rets" : ep_rets, "ep_lens" : ep_lens, "ep_rets_detail": np.array(ep_rets_detail)}
+                    "ep_rets" : ep_rets, "ep_lens": ep_lens, "ep_rets_detail": np.array(ep_rets_detail),
+                   "ep_num_danger": ep_num_danger, "ep_is_success": ep_is_success, "ep_is_collision": ep_is_collision}
             # Be careful!!! if you change the downstream algorithm to aggregate
             # several of these batches, then be sure to do a deepcopy
             ep_rets = []
             ep_lens = []
 
             ep_rets_detail = []
+            ep_num_danger = []
+            ep_is_success = []
+            ep_is_collision = []
 
         i = t % horizon
         obs[i] = ob
@@ -56,13 +63,13 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
         acs[i] = ac
         prevacs[i] = prevac
 
-        ob, rew, new, _ = env.step(ac)
+        ob, rew, new, info = env.step(ac)
         rews[i] = rew
 
         cur_ep_ret += rew
         cur_ep_len += 1
 
-        cur_ep_ret_detail += np.array(list(_['reward_dict'].values()))
+        cur_ep_ret_detail += np.array(list(info['reward_dict'].values()))
         if new:
             ep_rets.append(cur_ep_ret)
             ep_lens.append(cur_ep_len)
@@ -71,6 +78,9 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
 
             ep_rets_detail.append(cur_ep_ret_detail)
             cur_ep_ret_detail = 0
+            ep_num_danger.append(info["num_danger"])
+            ep_is_success.append(info["is_success"])
+            ep_is_collision.append(info["is_collision"])
 
             ob = env.reset()
         t += 1
@@ -101,8 +111,8 @@ def learn(env, policy_fn, *,
         max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
-        schedule='constant' # annealing for stepsize parameters (epsilon and adam)
-        ):
+        schedule='constant', # annealing for stepsize parameters (epsilon and adam)
+        continue_from=None):
     # Setup losses and stuff
     # ----------------------------------------
     ob_space = env.observation_space
@@ -149,6 +159,12 @@ def learn(env, policy_fn, *,
     adam.sync()
     saver = tf.train.Saver(max_to_keep=30)
 
+    # continue training from saved models
+    if continue_from:
+        latest_model = tf.train.latest_checkpoint("../tf_models/" + continue_from)
+        saver.restore(tf.get_default_session(), latest_model)
+        logger.log("Loaded model from {}".format(continue_from))
+
     # Prepare for rollouts
     # ----------------------------------------
     seg_gen = traj_segment_generator(pi, gamma, env, timesteps_per_actorbatch, stochastic=True)
@@ -159,13 +175,18 @@ def learn(env, policy_fn, *,
     tstart = time.time()
     lenbuffer = deque(maxlen=100) # rolling buffer for episode lengths
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
-    rewbuffer_c = deque(maxlen=100)
-    rewbuffer_e = deque(maxlen=100)
-    rewbuffer_s = deque(maxlen=100)
+    rewbuffer_comf = deque(maxlen=100)
+    rewbuffer_effi = deque(maxlen=100)
+    rewbuffer_time = deque(maxlen=100)
+    rewbuffer_speed = deque(maxlen=100)
+    rewbuffer_safety = deque(maxlen=100)
+    num_danger_buffer = deque(maxlen=100)
+    is_success_buffer = deque(maxlen=100)
+    is_collision_buffer = deque(maxlen=100)
 
     assert sum([max_iters>0, max_timesteps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
 
-    while True and max_iters != 1 :
+    while True and max_iters != 1:
         if callback: callback(locals(), globals())
         if max_timesteps and timesteps_so_far >= max_timesteps:
             break
@@ -221,34 +242,54 @@ def learn(env, policy_fn, *,
 
         logger.log(fmt_row(13, meanlosses))
         for (lossval, name) in zipsame(meanlosses, loss_names):
-            logger.record_tabular("loss_"+name, lossval)
-        logger.record_tabular("ev_tdlam_before", explained_variance(vpredbefore, tdlamret))
-        lrlocal = (seg["ep_lens"], seg["ep_rets"], seg["ep_rets_detail"][:, 0], seg["ep_rets_detail"][:, 1], seg["ep_rets_detail"][:, 2]) # local values
+            logger.record_tabular("loss/"+name, lossval)
+        logger.record_tabular("misc/ev_tdlam_before", explained_variance(vpredbefore, tdlamret))
+        lrlocal = (seg["ep_lens"], seg["ep_rets"], seg["ep_num_danger"], seg["ep_is_success"], seg["ep_is_collision"],
+                   seg["ep_rets_detail"][:, 0],
+                   seg["ep_rets_detail"][:, 1],
+                   seg["ep_rets_detail"][:, 2],
+                   seg["ep_rets_detail"][:, 3],
+                   seg["ep_rets_detail"][:, 4]) # local values
         listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal) # list of tuples
-        lens, rews, rews_c, rews_e, rews_s = map(flatten_lists, zip(*listoflrpairs))
+        lens, rews, num_danger, ep_is_success, ep_is_collision, \
+        rews_comf, rews_effi, rews_time, rews_speed, rews_safety = map(flatten_lists, zip(*listoflrpairs))
         lenbuffer.extend(lens)
-        rewbuffer.extend(rews)
-        rewbuffer_c.extend(rews_c)
-        rewbuffer_e.extend(rews_e)
-        rewbuffer_s.extend(rews_s)
+        num_danger_buffer.extend(num_danger)
+        is_success_buffer.extend(ep_is_success)
+        is_collision_buffer.extend(ep_is_collision)
 
-        logger.record_tabular("meanclipfracs", meanclipfracs)
-        logger.record_tabular("EpLenMean", np.mean(lenbuffer))
-        logger.record_tabular("EpRewMean", np.mean(rewbuffer))
-        logger.record_tabular("EpRewMean_c", np.mean(rewbuffer_c))
-        logger.record_tabular("EpRewMean_e", np.mean(rewbuffer_e))
-        logger.record_tabular("EpRewMean_s", np.mean(rewbuffer_s))
-        logger.record_tabular("EpThisIter", len(lens))
+        rewbuffer.extend(rews)
+        rewbuffer_comf.extend(rews_comf)
+        rewbuffer_effi.extend(rews_effi)
+        rewbuffer_time.extend(rews_time)
+        rewbuffer_speed.extend(rews_speed)
+        rewbuffer_safety.extend(rews_safety)
+
+        logger.record_tabular("evaluations/meanclipfracs", meanclipfracs)
+        logger.record_tabular("evaluations/EpLenMean", np.mean(lenbuffer))
+        logger.record_tabular("evaluations/numDangerMean", np.mean(num_danger_buffer))
+        logger.record_tabular("evaluations/successMean", np.mean(is_success_buffer))
+        logger.record_tabular("evaluations/collisionMean", np.mean(is_collision_buffer))
+
+        logger.record_tabular("rewards/EpRewMean", np.mean(rewbuffer))
+        logger.record_tabular("rewards/EpRewMean_comf", np.mean(rewbuffer_comf))
+        logger.record_tabular("rewards/EpRewMean_effi", np.mean(rewbuffer_effi))
+        logger.record_tabular("rewards/EpRewMean_time", np.mean(rewbuffer_time))
+        logger.record_tabular("rewards/EpRewMean_speed", np.mean(rewbuffer_speed))
+        logger.record_tabular("rewards/EpRewMean_safety", np.mean(rewbuffer_safety))
+
+        logger.record_tabular("misc/EpThisIter", len(lens))
         episodes_so_far += len(lens)
         timesteps_so_far += sum(lens)
         iters_so_far += 1
-        logger.record_tabular("EpisodesSoFar", episodes_so_far)
-        logger.record_tabular("TimestepsSoFar", timesteps_so_far)
-        logger.record_tabular("TimeElapsed", time.time() - tstart)
-        if MPI.COMM_WORLD.Get_rank()==0:
+        logger.record_tabular("misc/EpisodesSoFar", episodes_so_far)
+        logger.record_tabular("misc/TimestepsSoFar", timesteps_so_far)
+        logger.record_tabular("misc/TimeElapsed", time.time() - tstart)
+        if MPI.COMM_WORLD.Get_rank() == 0:
             logger.dump_tabular()
 
     return pi
+
 
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]
