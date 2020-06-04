@@ -136,7 +136,7 @@ def badLongiCtrl(env):
     # f.write('egoid, lanePos, dis2leader, speed, acce\n')
 
     egoid = 'lane1.4'
-    env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3, is_gui=True)
+    env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3, is_gui=False)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     for step in range(10000):
@@ -144,7 +144,7 @@ def badLongiCtrl(env):
         obs, rwd, done, info = env.step(action)
 
         if done:
-            env.reset(egoid, is_gui=True)
+            env.reset(egoid, is_gui=False)
             traci.vehicle.setColor(egoid, (255, 69, 0))
 
         #f.write('%s, %s, %s, %s, %s\n' % (egoid, obs[0][0], obs[1][0]-obs[0][0], obs[0][1], traci.vehicle.getAcceleration(egoid)))

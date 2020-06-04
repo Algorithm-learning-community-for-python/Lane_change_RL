@@ -46,7 +46,7 @@ def train(max_iters, callback=None):
                               timesteps_per_actorbatch=2048,  # 4096 512
                               clip_param=0.2, entcoeff=0,  # 0.2 0.0
                               optim_epochs=5,
-                              optim_stepsize=1e-3,  # 1e-4
+                              optim_stepsize=5e-3,  # 1e-4 1e-3
                               optim_batchsize=512,  # 512
                               gamma=0.99,  # look forward 1.65s
                               lam=0.95,

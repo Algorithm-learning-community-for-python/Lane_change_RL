@@ -73,8 +73,10 @@ class LaneChangeEnv(gym.Env):
         self.observation = np.empty(21)
         self.is_collision = False
         self.num_danger = 0
-        self.action_space = spaces.Discrete(9)
+        self.action_space = spaces.Discrete(6)
         self.observation_space = spaces.Box(low=-1, high=1, shape=(21, ))
+
+        self.polite_flag = np.random.choice([0, 1])
 
     def update_veh_dict(self, veh_id_tuple):
         for veh_id in veh_id_tuple:
@@ -172,7 +174,7 @@ class LaneChangeEnv(gym.Env):
         w_effi = 1
         w_time = 0.0  # 0.01 0
         w_speed = 0.01
-        w_safety = 1.5  # 1.5 0.15
+        w_safety = 1.2  # 1.5 0.15
         weights = np.array([w_comf, w_effi, w_time, w_speed, w_safety])
         # reward for comfort
         if act_longi == 1:
@@ -186,15 +188,15 @@ class LaneChangeEnv(gym.Env):
         # else:
         #     r_effi = -1
         if self.is_final_success:
-            r_effi += 50
+            r_effi += 30 # 50
         # reward for elapsed time
         r_time = -self.timestep
         # reward for desired speed
         r_speed = -abs(self.ego.speed - self.ego.speedLimit)
         # reward for safety
-        _, _, _, is_danger = self.is_to_crash(act_longi, act_lat, longi_safety_dis=15, lat_safety_dis=1)
+        _, _, _, _, is_danger = self.is_to_crash(act_longi, act_lat, longi_safety_dis=15, lat_safety_dis=1)
         if is_danger:
-            r_safety = -15
+            r_safety = -40  # -15
         else:
             r_safety = 0
         if self.ego.trgt_leader and self.ego.trgt_follower:
@@ -209,13 +211,9 @@ class LaneChangeEnv(gym.Env):
         elif self.ego.trgt_leader:
             dis2leader = abs(self.ego.pos_longi - self.ego.trgt_leader.pos_longi)
             r_safety += -1 + np.tanh(dis2leader/40)
-            r_safety += -1
         elif self.ego.trgt_follower:
             dis2follower = abs(self.ego.pos_longi - self.ego.trgt_follower.pos_longi)
             r_safety += -1 + np.tanh(dis2follower/40)
-            r_safety += -1
-        else:
-            r_safety += -2
 
         rewards = np.array([r_comf, r_effi, r_time, r_speed, r_safety])
         total_reward = np.sum(weights * rewards)
@@ -233,7 +231,8 @@ class LaneChangeEnv(gym.Env):
         if collision_num > 0:
             print("collision ids: ", traci.simulation.getCollidingVehiclesIDList())
             print("egoid: ", self.ego.veh_id)
-            done = True
+            print("trgt_follower: ", self.ego.trgt_follower)
+            print("trgt_leader: ", self.ego.trgt_leader)
             self.is_collision = True
             done = True
         return done
@@ -244,6 +243,7 @@ class LaneChangeEnv(gym.Env):
 
         is_danger = False
         after_which = None
+        before_which = None
         count = 0
         for veh in [self.ego.trgt_leader, self.ego.trgt_follower, self.ego.orig_leader, self.ego.orig_follower]:
             if veh:
@@ -257,12 +257,12 @@ class LaneChangeEnv(gym.Env):
             count += 1
 
         if (action_lat == 2 and (lat_danger_list[0] or lat_danger_list[1])) or \
-           (action_lat == 1 and (lat_danger_list[2] or lat_danger_list[3])):
+           (action_lat == 0 and (lat_danger_list[2] or lat_danger_list[3])):
             action_lat = 1
             is_danger = True
-        if action_lat == 0 and (lat_danger_list[2] or lat_danger_list[3]):
-            action_lat = 1
-            is_danger = True
+        # if action_lat == 0 and (lat_danger_list[2] or lat_danger_list[3]):
+        #     action_lat = 1
+        #     is_danger = True
         if (longi_danger_list[0] or longi_danger_list[2]):  # action_longi == 2 and
             action_longi = -1
             is_danger = True
@@ -273,7 +273,17 @@ class LaneChangeEnv(gym.Env):
             elif longi_danger_list[0]:
                 after_which = 'tgt'
 
-        return action_longi, action_lat, after_which, is_danger
+        if (longi_danger_list[1] or longi_danger_list[3]):  # action_longi == 2 and
+            action_longi = -2
+            is_danger = True
+            if longi_danger_list[3]:
+                before_which = 'orig'
+                if longi_danger_list[1]:
+                    before_which = 'both'
+            elif longi_danger_list[1]:
+                before_which = 'tgt'
+
+        return action_longi, action_lat, after_which, before_which, is_danger
 
     def preStep(self):
         traci.simulationStep()
@@ -281,8 +291,10 @@ class LaneChangeEnv(gym.Env):
         self.update_veh_dict(self.vehID_tuple_all)
 
     def step(self, action):
-        action_lateral = action // 3
-        action_longi = action % 3
+        action_lateral = action // 3  # 0, 1
+        assert action_lateral in [0, 1]
+        action_lateral += 1
+        action_longi = action % 3  # 0, 1, 2
         # print("longi: ", action_longi, "lateral: ", action_lateral)
         assert action is not None, 'action is None'
         assert self.egoID in self.vehID_tuple_all, 'vehicle not in env'
@@ -293,7 +305,7 @@ class LaneChangeEnv(gym.Env):
         # episode in progress; 0:change back to original line; 1:lane change to target lane; 2:keep current
         # lane change to target lane
 
-        action_longi, action_lateral, after_which, is_danger = self.is_to_crash(action_longi, action_lateral)
+        action_longi, action_lateral, after_which, before_which, is_danger = self.is_to_crash(action_longi, action_lateral)
         if is_danger: self.num_danger += 1
 
         # lateral control
@@ -309,29 +321,36 @@ class LaneChangeEnv(gym.Env):
 
         if self.is_success:
             self.success_timer += 1
-        if True:
-            # longitudinal control
-            if action_longi == -1:
-                # print("danger")
-                if after_which == 'orig':
-                    vNext = self.ego.orig_leader.speed
-                elif after_which == 'tgt':
-                    vNext = self.ego.trgt_leader.speed
-                else:
-                    assert after_which == 'both'
-                    vNext = min(self.ego.trgt_leader.speed, self.ego.orig_leader.speed)
+
+        # longitudinal safety constraint
+        if action_longi == -1:
+            if after_which == 'orig':
+                vNext = self.ego.orig_leader.speed
+            elif after_which == 'tgt':
+                vNext = self.ego.trgt_leader.speed
             else:
-                if action_longi == 2:
-                    acceNext = 1.5  # accelerate
-                elif action_longi == 1:
-                    acceNext = 0
-                else:
-                    acceNext = -1.5
-                vNext = max(self.ego.speed + acceNext * 0.1, 0.1)
-            traci.vehicle.setSpeed(self.egoID, vNext)
+                assert after_which == 'both'
+                vNext = min(self.ego.trgt_leader.speed, self.ego.orig_leader.speed)
+        elif action_longi == -2:
+            if before_which == 'orig':
+                vNext = self.ego.orig_follower.speed
+            elif before_which == 'tgt':
+                vNext = self.ego.trgt_follower.speed
+            else:
+                assert before_which == 'both'
+                vNext = max(self.ego.trgt_follower.speed, self.ego.orig_follower.speed)
+        else:
+            if action_longi == 2:
+                acceNext = 1.5  # accelerate
+            elif action_longi == 1:
+                acceNext = 0
+            else:
+                acceNext = -1.5
+            vNext = max(self.ego.speed + acceNext * 0.1, 0.1)
+        traci.vehicle.setSpeed(self.egoID, vNext)
 
         # target follower control
-        if self.ego.trgt_follower and np.random.randint(0, 2):
+        if self.ego.trgt_follower and self.polite_flag:
             # print(self.ego.trgt_follower.veh_id)
             # print(self.ego.trgt_leader.veh_id)
             # print(self.ego.veh_id)
@@ -369,6 +388,7 @@ class LaneChangeEnv(gym.Env):
     def seed(self, seed=None):
         if seed is None:
             self.randomseed = datetime.datetime.now().microsecond
+            print(self.randomseed)
         else:
             self.randomseed = seed
         random.seed(self.randomseed)
@@ -402,6 +422,7 @@ class LaneChangeEnv(gym.Env):
             self.ego.update_info(self.rd, self.veh_dict)
 
             self.updateObservation()
+            self.polite_flag = np.random.choice([0, 1])
             return self.observation
         return
 
