@@ -31,7 +31,7 @@ class Vehicle:
         self.acce_lat = 0
         self.pos_lat_deque = deque([self.pos_lat, self.pos_lat, self.pos_lat], maxlen=3)
 
-        traci.vehicle.setLaneChangeMode(veh_id, 256)  # 768
+        traci.vehicle.setLaneChangeMode(veh_id, 0)  # 768
 
     def update_info(self, rd, veh_dict):
         self.curr_laneIndex = traci.vehicle.getLaneIndex(self.veh_id)

@@ -1,5 +1,4 @@
 import os, sys
-os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.2.0/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
 import random
 import numpy as np
@@ -19,7 +18,7 @@ import traci
 
 def episode_generator(pi, env, is_gui, sumoseed, randomseed):
     egoid = 'lane1.' + str(random.randint(1, 6))
-    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
+    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed, is_train=False)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     cur_ep_ret = 0  # return in current episode
@@ -40,90 +39,36 @@ def episode_generator(pi, env, is_gui, sumoseed, randomseed):
         if new:
             return {"ep_obs": cur_ep_obs, "ep_acs": cur_ep_acs,
                    "ep_ret": cur_ep_ret, 'ep_rets_detail': cur_ep_ret_detail, "ep_len": cur_ep_len,
-                   'ep_num_danger': info['num_danger'], 'ep_is_success': info['is_success']}
-
-
-def pi_baseline(**kwargs):
-    ob = kwargs['ob']
-    safety_gap = kwargs['safety_gap']
-    # safety gap set to seconds to collision
-    TTC = (ob[3 * 4 + 0 + 1] - 5) / max(ob[1] - ob[3 * 4 + 1 + 1], 0.001)
-    TTC2 = (abs(ob[4 * 4 + 0 + 1]) - 5) / max(ob[4 * 4 + 1 + 1] - ob[1], 0.001)
-    if TTC > safety_gap and TTC2 > safety_gap:
-        ac_lat = 1  # change lane
-    else:
-        ac_lat = 0  # abort
-    if ob[2] < 3.2:
-        # follow target leader
-        ac_longi = 1
-    else:
-        # follow original leader
-        ac_longi = 0
-    ac = ac_longi * 3 + ac_lat
-    return ac, None
-
-
-# def evaluate(num_eps, is_gui, safety_gap):
-#     sumoseed = 0
-#     randomseed = 0
-#     env = LaneChangeEnv()
-#
-#     ret_eval = 0
-#     ret_det_eval = 0  # not a integer, will be broadcasted
-#     collision_num = 0
-#     success_num = 0
-#     for i in range(num_eps):
-#         ep_eval = episode_generator(pi_baseline, env, sg=safety_gap, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
-#
-#         ret_eval += ep_eval['ep_ret']
-#         # ep_rets_detail_np = np.vstack([ep_ret_detail for ep_ret_detail in ep_eval['ep_rets_detail']])
-#         # ret_det_eval += np.mean(ep_rets_detail_np, axis=0)
-#         ret_det_eval += ep_eval['ep_rets_detail']
-#         collision_num += int(ep_eval['ep_is_collision'])
-#         success_num += int(ep_eval['ep_is_success'])
-#
-#         f.write('%s,%s,%s,%s,' % (sumoseed, randomseed, ep_eval['ep_is_success'], ep_eval['ep_is_collision']))
-#         for i_obs in range(21):
-#             f.write(str(ep_eval['ep_obs'][-1][i_obs]) + ',')
-#         f.write('\n')
-#
-#     ret_eval /= float(num_eps)
-#     ret_det_eval /= float(num_eps)
-#     collision_rate = collision_num / float(num_eps)
-#     success_rate = success_num / float(num_eps)
-#
-#     print(ret_det_eval)
-#     print('safety_gap:', safety_gap,
-#           'reward:', ret_eval,
-#           '\ncollision_rate:', collision_rate,
-#           '\nsuccess_rate:', success_rate)
-#     return ret_eval, collision_rate, success_rate
+                   'ep_num_danger': info['num_danger'], 'ep_is_success': info['is_success'], 'ep_num_crash': info['num_crash'],
+                    'ep_is_collision': info["is_collision"]}
 
 
 def evaluate_ppo(num_eps, is_gui):
     sumoseed = 0
     randomseed = 0
-    env = LaneChangeEnv()
 
-    model_dir = '../tf_models/trial6'
+    model_dir = '../tf_models/trial5'
     latest_checkpoint = tf.train.latest_checkpoint(model_dir)
     model_path = latest_checkpoint
     pi = train(max_iters=1, callback=None)
     U.load_state(model_path)
 
+    env = LaneChangeEnv()
     ret_eval = 0
     ret_det_eval = 0  # not a integer, will be broadcasted
-    danger_list = []
+    danger_num = 0
+    crash_num = 0
+    collision_num = 0
     ep_len_list = []
     success_num = 0
     for i in range(num_eps):
         ep_eval = episode_generator(pi, env, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
 
         ret_eval += ep_eval['ep_ret']
-        # ep_rets_detail_np = np.vstack([ep_ret_detail for ep_ret_detail in ep_eval['ep_rets_detail']])
-        # ret_det_eval += np.mean(ep_rets_detail_np, axis=0)
         ret_det_eval += ep_eval['ep_rets_detail']
-        danger_list.append(1 if ep_eval['ep_num_danger'] > 0 else 0)
+        danger_num += ep_eval['ep_num_danger']
+        crash_num += ep_eval['ep_num_crash']
+        collision_num += ep_eval['ep_is_collision']
         success_num += int(ep_eval['ep_is_success'])
         if ep_eval['ep_is_success']:
             ep_len_list.append(ep_eval['ep_len'])
@@ -136,24 +81,28 @@ def evaluate_ppo(num_eps, is_gui):
 
     ret_eval /= float(num_eps)
     ret_det_eval /= float(num_eps)
-    danger_rate = np.mean(danger_list)
+    danger_rate = danger_num / num_eps
+    crash_rate = crash_num / num_eps
+    coll_rate = collision_num /num_eps
     success_rate = success_num / float(num_eps)
-    sucess_len = np.mean(ep_len_list)
-    print(ret_det_eval)
-    print('reward:', ret_eval,
-          '\ndanger_rate:', danger_rate,
-          '\nsuccess_rate:', success_rate,
-          '\nsucess_len', sucess_len)
-    return ret_eval, danger_rate, success_rate
+    success_len = np.mean(ep_len_list)
+    print('reward_detail: ', ret_det_eval)
+    print('reward: ', ret_eval,
+          '\ndanger_rate: ', danger_rate,
+          '\ncrash_rate: ', crash_rate,
+          '\ncollision_rate: ', coll_rate,
+          '\nsuccess_rate: ', success_rate,
+          '\nsucess_len: ', success_len)
+    return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
 
 
-NUM_EPS = 100
+NUM_EPS = 50
 IS_GUI = False
-rw, coll_rate, succ_rate = evaluate_ppo(NUM_EPS, IS_GUI)
+ret_eval, danger_rate, crash_rate, coll_rate, success_rate, sucess_len = evaluate_ppo(NUM_EPS, IS_GUI)
 
 # f = open('../data/baseline_evaluation/testseed2.csv', 'w+')
 # safety_gap = 2
-constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]
+# constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]
 # for safety_gap in constraints_list:
     # f.write('sumoseed,randomseed,is_sucess,is_collision,'
     #         'ego_pos_longi,ego_speed,ego_pos_lat,ego_acce,ego_speed_lat,'

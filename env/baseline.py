@@ -1,13 +1,7 @@
 import os, sys
-os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.2.0/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
 import random
 import numpy as np
-import tensorflow as tf
-from ppo_new.run import train
-from baselines.common import tf_util as U
-
-
 if 'SUMO_HOME' in os.environ:
     tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
     sys.path.append(tools)
@@ -19,7 +13,7 @@ import traci
 
 def episode_generator(pi, env, is_gui, ttc, gap, sumoseed, randomseed):
     egoid = 'lane1.' + str(random.randint(1, 6))
-    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
+    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed, is_train=False)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     cur_ep_ret = 0  # return in current episode
@@ -29,7 +23,7 @@ def episode_generator(pi, env, is_gui, ttc, gap, sumoseed, randomseed):
     cur_ep_acs = []
     while True:
         ac = pi(ob=ob, env=env, ttc=ttc, gap=gap)
-        ob, rew, new, info = env.step(ac, IDM=False)
+        ob, rew, new, info = env.step(ac)
 
         cur_ep_ret += rew
         cur_ep_ret_detail += np.array(list(info['reward_dict'].values()))
@@ -39,7 +33,8 @@ def episode_generator(pi, env, is_gui, ttc, gap, sumoseed, randomseed):
         if new:
             return {"ep_obs": cur_ep_obs, "ep_acs": cur_ep_acs,
                    "ep_ret": cur_ep_ret, 'ep_rets_detail': cur_ep_ret_detail, "ep_len": cur_ep_len,
-                   'ep_num_danger': info['num_danger'], 'ep_is_success': info['is_success'], }
+                   'ep_num_danger': info['num_danger'], 'ep_is_success': info['is_success'], 'ep_num_crash': info['num_crash'],
+                    'ep_is_collision': info["is_collision"]}
 
 
 def pi_baseline(ob, env, ttc, gap):
@@ -52,13 +47,13 @@ def pi_baseline(ob, env, ttc, gap):
         follower_speed = env.ego.trgt_follower.speed
     else:
         follower_speed = env.ego.speed
-    leader_dis = abs(ob[3 * 4 + 0 + 1])*479.6
-    follower_dis = abs(ob[4 * 4 + 0 + 1])*479.6
-    TTC = (leader_dis - 5) / max(env.ego.speed - leader_speed, 0.001)
-    TTC2 = (follower_dis - 5) / max(follower_speed - env.ego.speed, 0.001)
+    leader_dis = abs(ob[3 * 4 + 0 + 1])*239.8
+    follower_dis = abs(ob[4 * 4 + 0 + 1])*239.8
+    TTC = (leader_dis - 5) / max(env.ego.speed, 0.001)
+    TTC2 = (follower_dis - 5) / max(follower_speed, 0.001)
     # print(TTC, TTC)
     if TTC > ttc and TTC2 > ttc and leader_dis > gap and follower_dis > gap:
-        ac_lat = 2  # change lane
+        ac_lat = 1  # change lane
     else:
         ac_lat = 0  # abort
     ac = ac_lat * 3 + 1
@@ -68,22 +63,24 @@ def pi_baseline(ob, env, ttc, gap):
 def evaluate_baseline(num_eps, ttc, gap, is_gui):
     sumoseed = 0
     randomseed = 0
-    env = LaneChangeEnv()
     pi = pi_baseline
 
+    env = LaneChangeEnv()
     ret_eval = 0
     ret_det_eval = 0  # not a integer, will be broadcasted
-    danger_list = []
+    danger_num = 0
+    crash_num = 0
+    collision_num = 0
     ep_len_list = []
     success_num = 0
     for i in range(num_eps):
         ep_eval = episode_generator(pi, env, is_gui=is_gui, ttc=ttc, gap=gap, sumoseed=sumoseed, randomseed=randomseed)
 
         ret_eval += ep_eval['ep_ret']
-        # ep_rets_detail_np = np.vstack([ep_ret_detail for ep_ret_detail in ep_eval['ep_rets_detail']])
-        # ret_det_eval += np.mean(ep_rets_detail_np, axis=0)
         ret_det_eval += ep_eval['ep_rets_detail']
-        danger_list.append(1 if ep_eval['ep_num_danger'] > 0 else 0)
+        danger_num += ep_eval['ep_num_danger']
+        crash_num += ep_eval['ep_num_crash']
+        collision_num += ep_eval['ep_is_collision']
         success_num += int(ep_eval['ep_is_success'])
         if ep_eval['ep_is_success']:
             ep_len_list.append(ep_eval['ep_len'])
@@ -93,41 +90,56 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
         # for i_obs in range(21):
         #     f.write(str(ep_eval['ep_obs'][-1][i_obs]) + ',')
         # f.write('\n')
-
+    env.close()
     ret_eval /= float(num_eps)
     ret_det_eval /= float(num_eps)
-    danger_rate = np.mean(danger_list)
+    danger_rate = danger_num / num_eps
+    crash_rate = crash_num / num_eps
+    coll_rate = collision_num / num_eps
     success_rate = success_num / float(num_eps)
-    sucess_len = np.mean(ep_len_list)
-    print(ret_det_eval)
-    print('reward:', ret_eval,
-          '\ndanger_rate:', danger_rate,
-          '\nsuccess_rate:', success_rate,
-          '\nsucess_len', sucess_len)
-    return ret_eval, danger_rate, success_rate, sucess_len
+    success_len = np.mean(ep_len_list)
+    print('reward_detail: ', ret_det_eval)
+    print('reward: ', ret_eval,
+          '\ndanger_rate: ', danger_rate,
+          '\ncrash_rate: ', crash_rate,
+          '\ncollision_rate: ', coll_rate,
+          '\nsuccess_rate: ', success_rate,
+          '\nsuccess_len: ', success_len)
+    return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
 
 
-NUM_EPS = 100
+NUM_EPS = 50
 IS_GUI = False
 
 
 # f = open('../data/baseline_evaluation/testseed2.csv', 'w+')
 # safety_gap = 2
 constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]
-ttcs = [2, 4, 6, 8, 10]#np.linspace(2, 20, 4)
-gap =0
+ttcs = [0.5, 1, 2, 3, 4]
+ttcs = [2]
+gap = 0
+
+reward_list = []
+danger_rate_list = []
+crash_rate_list = []
 coll_rate_list = []
 succ_rate_list = []
 succ_len_list = []
 for ttc in ttcs:
-    rw, coll_rate, succ_rate, succ_len= evaluate_baseline(NUM_EPS, ttc, gap, IS_GUI)
+    ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len = evaluate_baseline(NUM_EPS, ttc, gap, IS_GUI)
+    reward_list.append(ret_eval)
+    danger_rate_list.append(danger_rate)
+    crash_rate_list.append(crash_rate)
     coll_rate_list.append(coll_rate)
-    succ_rate_list.append(succ_rate)
-    succ_len_list.append(succ_len)
+    succ_rate_list.append(success_rate)
+    succ_len_list.append(success_len)
 
-print(coll_rate_list)
-print(succ_rate_list)
-print(succ_len_list)
+print('reward: ', reward_list)
+print('danger rate: ', danger_rate_list)
+print('crash rate: ', crash_rate_list)
+print('collison rate: ', coll_rate_list)
+print('success rate: ', succ_rate_list)
+print('sucess len: ', succ_len_list)
 # for safety_gap in constraints_list:
     # f.write('sumoseed,randomseed,is_sucess,is_collision,'
     #         'ego_pos_longi,ego_speed,ego_pos_lat,ego_acce,ego_speed_lat,'

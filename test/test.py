@@ -1,16 +1,4 @@
-import sys
-import os
-os.environ["SUMO_HOME"] = "/usr/local/Cellar/sumo/1.6.0/share/sumo"
 from env.LaneChangeEnv import LaneChangeEnv
-
-print(os.environ["SUMO_HOME"])
-if 'SUMO_HOME' in os.environ:
-    tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
-    print(tools)
-    sys.path.append(tools)
-    print('success')
-else:
-    sys.exit("please declare environment variable 'SUMO_HOME'")
 import traci
 
 
@@ -136,15 +124,15 @@ def badLongiCtrl(env):
     # f.write('egoid, lanePos, dis2leader, speed, acce\n')
 
     egoid = 'lane1.4'
-    env.reset(egoid=egoid, tfc=2, sumoseed=4, randomseed=3, is_gui=False)
+    env.reset(egoid=egoid, tfc=1, sumoseed=4, randomseed=3, is_gui=True)
     traci.vehicle.setColor(egoid, (255, 69, 0))
-
+    # print(env.rd.speedLimit)
     for step in range(10000):
-        action = 2
+        action = 1
         obs, rwd, done, info = env.step(action)
 
         if done:
-            env.reset(egoid, is_gui=False)
+            env.reset(egoid, tfc=1, is_gui=True)
             traci.vehicle.setColor(egoid, (255, 69, 0))
 
         #f.write('%s, %s, %s, %s, %s\n' % (egoid, obs[0][0], obs[1][0]-obs[0][0], obs[0][1], traci.vehicle.getAcceleration(egoid)))

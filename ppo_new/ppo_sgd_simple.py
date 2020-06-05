@@ -23,6 +23,7 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
     cur_ep_ret_detail = 0
     ep_rets_detail = []
     ep_num_danger = []
+    ep_num_crash = []
     ep_is_success = []
     ep_is_collision = []
 
@@ -45,7 +46,8 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
             yield {"ob" : obs, "rew" : rews, "vpred" : vpreds, "new" : news,
                     "ac" : acs, "prevac" : prevacs, "nextvpred": vpred * (1 - new),
                     "ep_rets" : ep_rets, "ep_lens": ep_lens, "ep_rets_detail": np.array(ep_rets_detail),
-                   "ep_num_danger": ep_num_danger, "ep_is_success": ep_is_success, "ep_is_collision": ep_is_collision}
+                   "ep_num_danger": ep_num_danger, "ep_is_success": ep_is_success, "ep_is_collision": ep_is_collision,
+                   "ep_num_crash": ep_num_crash}
             # Be careful!!! if you change the downstream algorithm to aggregate
             # several of these batches, then be sure to do a deepcopy
             ep_rets = []
@@ -53,6 +55,7 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
 
             ep_rets_detail = []
             ep_num_danger = []
+            ep_num_crash = []
             ep_is_success = []
             ep_is_collision = []
 
@@ -79,6 +82,7 @@ def traj_segment_generator(pi, gamma, env, horizon, stochastic):
             ep_rets_detail.append(cur_ep_ret_detail)
             cur_ep_ret_detail = 0
             ep_num_danger.append(info["num_danger"])
+            ep_num_crash.append(info["num_crash"])
             ep_is_success.append(info["is_success"])
             ep_is_collision.append(info["is_collision"])
 
@@ -181,6 +185,7 @@ def learn(env, policy_fn, *,
     rewbuffer_speed = deque(maxlen=100)
     rewbuffer_safety = deque(maxlen=100)
     num_danger_buffer = deque(maxlen=100)
+    num_crash_buffer = deque(maxlen=100)
     is_success_buffer = deque(maxlen=100)
     is_collision_buffer = deque(maxlen=100)
 
@@ -244,17 +249,19 @@ def learn(env, policy_fn, *,
         for (lossval, name) in zipsame(meanlosses, loss_names):
             logger.record_tabular("loss/"+name, lossval)
         logger.record_tabular("misc/ev_tdlam_before", explained_variance(vpredbefore, tdlamret))
-        lrlocal = (seg["ep_lens"], seg["ep_rets"], seg["ep_num_danger"], seg["ep_is_success"], seg["ep_is_collision"],
+        lrlocal = (seg["ep_lens"], seg["ep_rets"], seg["ep_num_danger"], seg["ep_num_crash"], seg["ep_is_success"],
+                   seg["ep_is_collision"],
                    seg["ep_rets_detail"][:, 0],
                    seg["ep_rets_detail"][:, 1],
                    seg["ep_rets_detail"][:, 2],
                    seg["ep_rets_detail"][:, 3],
                    seg["ep_rets_detail"][:, 4]) # local values
         listoflrpairs = MPI.COMM_WORLD.allgather(lrlocal) # list of tuples
-        lens, rews, num_danger, ep_is_success, ep_is_collision, \
+        lens, rews, num_danger, num_crash, ep_is_success, ep_is_collision, \
         rews_comf, rews_effi, rews_time, rews_speed, rews_safety = map(flatten_lists, zip(*listoflrpairs))
         lenbuffer.extend(lens)
         num_danger_buffer.extend(num_danger)
+        num_crash_buffer.extend(num_crash)
         is_success_buffer.extend(ep_is_success)
         is_collision_buffer.extend(ep_is_collision)
 
@@ -268,6 +275,7 @@ def learn(env, policy_fn, *,
         logger.record_tabular("evaluations/meanclipfracs", meanclipfracs)
         logger.record_tabular("evaluations/EpLenMean", np.mean(lenbuffer))
         logger.record_tabular("evaluations/numDangerMean", np.mean(num_danger_buffer))
+        logger.record_tabular("evaluations/numCrashMean", np.mean(num_crash_buffer))
         logger.record_tabular("evaluations/successMean", np.mean(is_success_buffer))
         logger.record_tabular("evaluations/collisionMean", np.mean(is_collision_buffer))
 
