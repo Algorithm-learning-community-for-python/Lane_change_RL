@@ -18,7 +18,7 @@ import traci
 
 def episode_generator(pi, env, is_gui, sumoseed, randomseed):
     egoid = 'lane1.' + str(random.randint(1, 6))
-    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed, is_train=False)
+    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     cur_ep_ret = 0  # return in current episode
@@ -53,7 +53,7 @@ def evaluate_ppo(num_eps, is_gui):
     pi = train(max_iters=1, callback=None)
     U.load_state(model_path)
 
-    env = LaneChangeEnv()
+    env = LaneChangeEnv(is_train=False)
     ret_eval = 0
     ret_det_eval = 0  # not a integer, will be broadcasted
     danger_num = 0
@@ -96,7 +96,7 @@ def evaluate_ppo(num_eps, is_gui):
     return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
 
 
-NUM_EPS = 50
+NUM_EPS = 100
 IS_GUI = False
 ret_eval, danger_rate, crash_rate, coll_rate, success_rate, sucess_len = evaluate_ppo(NUM_EPS, IS_GUI)
 

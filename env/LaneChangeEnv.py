@@ -9,66 +9,24 @@ import traci
 
 
 class LaneChangeEnv(gym.Env):
-    def __init__(self, id=None, traffic=None, gui=False, seed=None, max_timesteps=250, label='default', is_train=True):
+    def __init__(self, gui=False, max_timesteps=250, label='default', is_train=True):
         self.max_timesteps = max_timesteps
         self.is_train = is_train
-        if traffic == 0:
-            # average 9 vehicles
-            self.cfg = '../map/ramp3/mapDenseSlow.sumo.cfg'
-        elif traffic == 2:
-            # average 19 vehicles
-            self.cfg = '../map/ramp3/mapDenseFast.sumo.cfg'
-        else:
-            # average 14 vehicles
-            self.cfg = '../map/ramp3/mapDense.sumo.cfg'
-
-        # arguments must be string, if float/int, must be converted to str(float/int), instead of '3.0'
-        self.sumoBinary = os.environ["SUMO_HOME"] + '/bin/sumo'
-        self.sumoCmd = ['-c', self.cfg,
-                        # '--lanechange.duration', str(3),     # using 'Simple Continuous lane-change model'
-                        '--lateral-resolution', str(0.8),  # using 'Sublane-Model'
-                        '--step-length', str(0.1),
-                        '--default.action-step-length', str(0.1),
-                        '--no-warnings', str(True)]
-        # randomness
-        if seed is None:
-            self.sumoCmd += ['--random']  # initialize with current system time
-        else:
-
-            self.sumoCmd += ['--seed', str(seed)]  # initialize with given seed
-        # gui
-        if gui is True:
-            self.sumoBinary += '-gui'
-            self.sumoCmd = [self.sumoBinary] + self.sumoCmd + ['--quit-on-end', str(True),
-                                                               '--start', str(True)]
-        else:
-            self.sumoCmd = [self.sumoBinary] + self.sumoCmd
-        # start Traci
-        traci.start(self.sumoCmd, label=label)
-        traci.load(self.cfg)
-        self.rd = Road()
-        self.timestep = 0
-        self.dt = traci.simulation.getDeltaT()
-
-        self.veh_dict = {}
-        self.vehID_tuple_all = ()
-
-        self.egoID = id
-        self.ego = None
-
-        self.is_success = False
-        self.is_final_success = False
-        self.success_timer = 0
-        self.is_collision = False
-        self.is_crash = False
-        self.polite_flag = np.random.choice([0, 1])
-        self.num_danger = 0
-        self.num_crash = 0
-
-        self.info = {}
-        self.observation = np.empty(21)
         self.action_space = spaces.Discrete(6)
-        self.observation_space = spaces.Box(low=-1, high=1, shape=(21, ))
+        self.observation_space = spaces.Box(low=-1, high=1, shape=(21,))
+
+        self.sumoBinary = os.environ["SUMO_HOME"] + '/bin/sumo'
+        self.sumoCmd_base = ['--lateral-resolution', str(0.8),  # using 'Sublane-Model'
+                             '--step-length', str(0.1),
+                             '--default.action-step-length', str(0.1),
+                             '--no-warnings', str(True),
+                             '--no-step-log', str(True)]
+        if gui:
+            self.sumoBinary += '-gui'
+            self.sumoCmd_base += ['--quit-on-end', str(True), '--start', str(True)]
+        sumoCmd = [self.sumoBinary] + ['-c', '../map/ramp3/mapDense.sumo.cfg'] + self.sumoCmd_base
+        traci.start(sumoCmd, label=label)
+        self.rd = Road()
 
     def update_veh_dict(self, veh_id_tuple):
         for veh_id in veh_id_tuple:
@@ -113,13 +71,10 @@ class LaneChangeEnv(gym.Env):
         self.observation[3] = self.ego.acce
         self.observation[4] = self.ego.speed_lat
 
-        #self._updateObservationSingle(0, self.ego)
         self._updateObservationSingle(1, self.ego.orig_leader)
         self._updateObservationSingle(2, self.ego.orig_follower)
         self._updateObservationSingle(3, self.ego.trgt_leader)
         self._updateObservationSingle(4, self.ego.trgt_follower)
-        # self.observation = np.array(self.observation).flatten()
-        # print(self.observation.shape)
 
     def updateReward(self, act_lat, act_longi):
         names = ["comfort", "efficiency", "time", "speed", "safety"]
@@ -198,8 +153,8 @@ class LaneChangeEnv(gym.Env):
         if collision_num > 0:
             print("collision ids: ", traci.simulation.getCollidingVehiclesIDList())
             print("egoid: ", self.ego.veh_id)
-            print("trgt_follower: ", self.ego.trgt_follower)
-            print("trgt_leader: ", self.ego.trgt_leader)
+            print("trgt_follower: ", self.ego.trgt_follower.veh_id)
+            print("trgt_leader: ", self.ego.trgt_leader.veh_id)
             self.is_collision = True
             done = True
         if self.timestep > self.max_timesteps:
@@ -357,31 +312,57 @@ class LaneChangeEnv(gym.Env):
         return self.observation, reward, done, self.info
 
     def seed(self, seed=None):
-        if seed is None:
-            self.randomseed = datetime.datetime.now().microsecond
-            print(self.randomseed)
+        if not seed:
+            random.seed(datetime.datetime.now().microsecond)
+            np.random.seed(datetime.datetime.now().microsecond)
         else:
-            self.randomseed = seed
-        random.seed(self.randomseed)
+            random.seed(seed)
+            np.random.seed(seed)
 
-    def reset(self, egoid=None, tlane=0, tfc=None, is_gui=False, sumoseed=None, randomseed=None, is_train=True):
-        """
-        reset env
-        :param id: ego vehicle id
-        :param tfc: int. 0:light; 1:medium; 2:dense
-        :return: initial observation
-        """
+    def reset(self, egoid=None, tlane=0, tfc=None, is_gui=False, sumoseed=None, randomseed=None):
+        egoid = 'lane1.' + str(random.randint(1, 6)) if not egoid else egoid
+        tfc = np.random.choice([0, 1, 2]) if not tfc else tfc
+        if tfc == 0:
+            cfg = '../map/ramp3/mapDenseSlow.sumo.cfg'
+        elif tfc == 1:
+            cfg = '../map/ramp3/mapDense.sumo.cfg'
+        else:
+            assert tfc == 2
+            cfg = '../map/ramp3/mapDenseFast.sumo.cfg'
+
+        sumoCmd_load = ['-c', cfg] + self.sumoCmd_base
         self.seed(randomseed)
-        if egoid is None:
-            egoid = 'lane1.' + str(random.randint(1, 6))
-        traci.close()
-        if tfc is None:
-            tfc = np.random.choice([0, 1, 2])
-        self.__init__(id=egoid, traffic=tfc, gui=is_gui, seed=sumoseed, is_train=is_train)
-        # continue step until ego appears in env
+        if not sumoseed:
+            sumoCmd_load += ['--random']  # initialize with current system time
+        else:
+            sumoCmd_load += ['--seed', str(sumoseed)]  # initialize with given seed
+
+        traci.load(sumoCmd_load)
+
+        self.timestep = 0
+        self.dt = traci.simulation.getDeltaT()
+
+        self.veh_dict = {}
+        self.vehID_tuple_all = ()
+
+        self.egoID = egoid
+        self.ego = None
+
+        self.is_success = False
+        self.is_final_success = False
+        self.success_timer = 0
+        self.is_collision = False
+        self.is_crash = False
+        self.polite_flag = np.random.choice([0, 1])
+        self.num_danger = 0
+        self.num_crash = 0
+
+        self.info = {}
+        self.observation = np.empty(21)
+
+        # step simulation until ego appears
         if self.egoID is not None:
             while self.egoID not in self.veh_dict.keys():
-                # must ensure safety in preStpe
                 self.preStep()
                 for id in traci.edge.getLastStepVehicleIDs(self.rd.warmupEdge):
                     traci.vehicle.setLaneChangeMode(id, 0)

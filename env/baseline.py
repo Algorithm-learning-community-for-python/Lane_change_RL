@@ -13,7 +13,7 @@ import traci
 
 def episode_generator(pi, env, is_gui, ttc, gap, sumoseed, randomseed):
     egoid = 'lane1.' + str(random.randint(1, 6))
-    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed, is_train=False)
+    ob = env.reset(egoid=egoid, tlane=0, tfc=2, is_gui=is_gui, sumoseed=sumoseed, randomseed=randomseed)
     traci.vehicle.setColor(egoid, (255, 69, 0))
 
     cur_ep_ret = 0  # return in current episode
@@ -65,7 +65,7 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
     randomseed = 0
     pi = pi_baseline
 
-    env = LaneChangeEnv()
+    env = LaneChangeEnv(is_train=False)
     ret_eval = 0
     ret_det_eval = 0  # not a integer, will be broadcasted
     danger_num = 0
@@ -108,7 +108,7 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
     return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
 
 
-NUM_EPS = 50
+NUM_EPS = 100
 IS_GUI = False
 
 
@@ -116,7 +116,7 @@ IS_GUI = False
 # safety_gap = 2
 constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]
 ttcs = [0.5, 1, 2, 3, 4]
-ttcs = [2]
+# ttcs = [2]
 gap = 0
 
 reward_list = []
