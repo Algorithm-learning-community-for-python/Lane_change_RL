@@ -47,7 +47,7 @@ def evaluate_ppo(num_eps, is_gui):
     sumoseed = 0
     randomseed = 0
 
-    model_dir = '../tf_models/trial5'
+    model_dir = '../tf_models/trial9'
     latest_checkpoint = tf.train.latest_checkpoint(model_dir)
     model_path = latest_checkpoint
     pi = train(max_iters=1, callback=None)
@@ -58,6 +58,8 @@ def evaluate_ppo(num_eps, is_gui):
     ret_det_eval = 0  # not a integer, will be broadcasted
     danger_num = 0
     crash_num = 0
+    level_1_danger = []
+    level_2_danger = []
     collision_num = 0
     ep_len_list = []
     success_num = 0
@@ -68,21 +70,21 @@ def evaluate_ppo(num_eps, is_gui):
         ret_det_eval += ep_eval['ep_rets_detail']
         danger_num += ep_eval['ep_num_danger']
         crash_num += ep_eval['ep_num_crash']
+        level_1_danger.append(1 if ep_eval['ep_num_danger'] > 0 else 0)
+        level_2_danger.append((1 if ep_eval['ep_num_crash'] > 0 else 0))
         collision_num += ep_eval['ep_is_collision']
         success_num += int(ep_eval['ep_is_success'])
         if ep_eval['ep_is_success']:
             ep_len_list.append(ep_eval['ep_len'])
         sumoseed += 1
         randomseed += 1
-        # f.write('%s,%s,%s,%s,' % (sumoseed, randomseed, ep_eval['ep_is_success'], ep_eval['ep_num_danger']))
-        # for i_obs in range(21):
-        #     f.write(str(ep_eval['ep_obs'][-1][i_obs]) + ',')
-        # f.write('\n')
 
     ret_eval /= float(num_eps)
     ret_det_eval /= float(num_eps)
     danger_rate = danger_num / num_eps
     crash_rate = crash_num / num_eps
+    level_1_danger_rate = np.mean(level_1_danger)
+    level_2_danger_rate = np.mean(level_2_danger)
     coll_rate = collision_num /num_eps
     success_rate = success_num / float(num_eps)
     success_len = np.mean(ep_len_list)
@@ -90,15 +92,17 @@ def evaluate_ppo(num_eps, is_gui):
     print('reward: ', ret_eval,
           '\ndanger_rate: ', danger_rate,
           '\ncrash_rate: ', crash_rate,
+          '\nlevel-1-danger_rate: ', level_1_danger_rate,
+          '\nlevel-2-danger_rate: ', level_2_danger_rate,
           '\ncollision_rate: ', coll_rate,
           '\nsuccess_rate: ', success_rate,
           '\nsucess_len: ', success_len)
-    return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
+    return ret_eval, danger_rate, crash_rate, level_1_danger_rate, level_2_danger_rate, coll_rate, success_rate, success_len
 
 
 NUM_EPS = 100
 IS_GUI = False
-ret_eval, danger_rate, crash_rate, coll_rate, success_rate, sucess_len = evaluate_ppo(NUM_EPS, IS_GUI)
+ret_eval, danger_rate, crash_rate, level_1_danger_rate, level_2_danger_rate, coll_rate, success_rate, success_len = evaluate_ppo(NUM_EPS, IS_GUI)
 
 # f = open('../data/baseline_evaluation/testseed2.csv', 'w+')
 # safety_gap = 2

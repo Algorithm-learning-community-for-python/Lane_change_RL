@@ -70,6 +70,8 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
     ret_det_eval = 0  # not a integer, will be broadcasted
     danger_num = 0
     crash_num = 0
+    level_1_danger = []
+    level_2_danger = []
     collision_num = 0
     ep_len_list = []
     success_num = 0
@@ -80,21 +82,21 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
         ret_det_eval += ep_eval['ep_rets_detail']
         danger_num += ep_eval['ep_num_danger']
         crash_num += ep_eval['ep_num_crash']
+        level_1_danger.append(1 if ep_eval['ep_num_danger'] > 0 else 0)
+        level_2_danger.append((1 if ep_eval['ep_num_crash'] > 0 else 0))
         collision_num += ep_eval['ep_is_collision']
         success_num += int(ep_eval['ep_is_success'])
         if ep_eval['ep_is_success']:
             ep_len_list.append(ep_eval['ep_len'])
         sumoseed += 1
         randomseed += 1
-        # f.write('%s,%s,%s,%s,' % (sumoseed, randomseed, ep_eval['ep_is_success'], ep_eval['ep_num_danger']))
-        # for i_obs in range(21):
-        #     f.write(str(ep_eval['ep_obs'][-1][i_obs]) + ',')
-        # f.write('\n')
-    env.close()
+
     ret_eval /= float(num_eps)
     ret_det_eval /= float(num_eps)
     danger_rate = danger_num / num_eps
     crash_rate = crash_num / num_eps
+    level_1_danger_rate = np.mean(level_1_danger)
+    level_2_danger_rate = np.mean(level_2_danger)
     coll_rate = collision_num / num_eps
     success_rate = success_num / float(num_eps)
     success_len = np.mean(ep_len_list)
@@ -102,10 +104,13 @@ def evaluate_baseline(num_eps, ttc, gap, is_gui):
     print('reward: ', ret_eval,
           '\ndanger_rate: ', danger_rate,
           '\ncrash_rate: ', crash_rate,
+          '\nlevel-1-danger_rate: ', level_1_danger_rate,
+          '\nlevel-2-danger_rate: ', level_2_danger_rate,
           '\ncollision_rate: ', coll_rate,
           '\nsuccess_rate: ', success_rate,
-          '\nsuccess_len: ', success_len)
-    return ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len
+          '\nsucess_len: ', success_len)
+    env.close()
+    return ret_eval, danger_rate, crash_rate, level_1_danger_rate, level_2_danger_rate, coll_rate, success_rate, success_len
 
 
 NUM_EPS = 100
@@ -115,21 +120,25 @@ IS_GUI = False
 # f = open('../data/baseline_evaluation/testseed2.csv', 'w+')
 # safety_gap = 2
 constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]
-ttcs = [0.5, 1, 2, 3, 4]
+ttcs = [0.1, 0.3, 0.5, 1, 2, 3]
 # ttcs = [2]
 gap = 0
 
 reward_list = []
 danger_rate_list = []
 crash_rate_list = []
+level_1_danger_list = []
+level_2_danger_list = []
 coll_rate_list = []
 succ_rate_list = []
 succ_len_list = []
 for ttc in ttcs:
-    ret_eval, danger_rate, crash_rate, coll_rate, success_rate, success_len = evaluate_baseline(NUM_EPS, ttc, gap, IS_GUI)
+    ret_eval, danger_rate, crash_rate, level_1_danger_rate, level_2_danger_rate, coll_rate, success_rate, success_len = evaluate_baseline(NUM_EPS, ttc, gap, IS_GUI)
     reward_list.append(ret_eval)
     danger_rate_list.append(danger_rate)
     crash_rate_list.append(crash_rate)
+    level_1_danger_list.append(level_1_danger_rate)
+    level_2_danger_list.append(level_2_danger_rate)
     coll_rate_list.append(coll_rate)
     succ_rate_list.append(success_rate)
     succ_len_list.append(success_len)
@@ -137,21 +146,17 @@ for ttc in ttcs:
 print('reward: ', reward_list)
 print('danger rate: ', danger_rate_list)
 print('crash rate: ', crash_rate_list)
+print('level-1-danger_rate: ', level_1_danger_list)
+print('level-2-danger_rate: ', level_2_danger_list)
 print('collison rate: ', coll_rate_list)
 print('success rate: ', succ_rate_list)
 print('sucess len: ', succ_len_list)
-# for safety_gap in constraints_list:
-    # f.write('sumoseed,randomseed,is_sucess,is_collision,'
-    #         'ego_pos_longi,ego_speed,ego_pos_lat,ego_acce,ego_speed_lat,'
-    #         'ol_dis2ego,ol_speed,ol_pos_lat,ol_acce,'
-    #         'of_dis2ego,of_speed,of_pos_lat,of_acce,'
-    #         'tl_dis2ego,tl_speed,tl_pos_lat,tl_acce,'
-    #         'tf_dis2ego,tf_speed,tf_pos_lat,tf_acce,\n')
 
-        # f.write('safety_gap, reward, collision_rate, success_rate\n')
-        # f.write('%s, %s, %s, %s\n' % (safety_gap, rw, coll_rate, succ_rate))
-
-    # safety_gap_list = [1, 5, 10, 15, 20, 30]
-    # for safety_gap in safety_gap_list:
-    #     rw, coll_rate, succ_rate = evaluate(HORIZON, NUM_HORIZON, IS_GUI, safety_gap)
-    #     f.write('%s, %s, %s, %s\n' % (safety_gap, rw, coll_rate, succ_rate))
+# reward:  [-89.12552753359037, -69.84537459892903, -73.81562785829651, -148.23580687485645, -227.71842861064192, -229.9101089174337]
+# danger rate:  [2.13, 0.88, 0.77, 1.88, 3.82, 3.82]
+# crash rate:  [0.58, 0.33, 0.5, 1.24, 2.09, 2.09]
+# level-1-danger_rate:  [0.23, 0.09, 0.05, 0.14, 0.25, 0.25]
+# level-2-danger_rate:  [0.05, 0.03, 0.05, 0.12, 0.2, 0.2]
+# collison rate:  [0.0, 0.0, 0.02, 0.09, 0.14, 0.14]
+# success rate:  [0.99, 0.99, 0.9, 0.6, 0.08, 0.05]
+# sucess len:  [55.656565656565654, 62.43434343434343, 67.5, 90.1, 66.625, 73.4]

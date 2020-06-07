@@ -128,12 +128,22 @@ class LaneChangeEnv(gym.Env):
                 ttc_f = dis2follower / max(self.ego.trgt_follower.speed, 0.1)
                 r_safety += -1 + np.tanh(ttc_f/2.5)
 
-            if self.ego.curr_leader:
-                dis2leader = abs(self.ego.pos_longi - self.ego.curr_leader.pos_longi)
-                ttc_l = dis2leader / max(self.ego.speed, 0.1)
-                r_safety = 0.7*r_safety + 0.3*(-1 + np.tanh(ttc_l/2.5))
+            if self.ego.curr_leader and self.ego.trgt_leader:
+                dis2currleader = abs(self.ego.pos_longi - self.ego.curr_leader.pos_longi)
+                dis2trgtleader = abs(self.ego.pos_longi - self.ego.trgt_leader.pos_longi)
+                ttc_cl = dis2currleader / max(self.ego.speed, 0.1)
+                ttc_tl = dis2trgtleader / max(self.ego.speed, 0.1)
+                r_safety = 0.7*r_safety + 0.3*(-1 + np.tanh(min(ttc_cl, ttc_tl)/2.5))
+            elif self.ego.curr_leader:
+                dis2currleader = abs(self.ego.pos_longi - self.ego.curr_leader.pos_longi)
+                ttc_cl = dis2currleader / max(self.ego.speed, 0.1)
+                r_safety = 0.7*r_safety + 0.3*(-1 + np.tanh(ttc_cl /2.5))
+            elif self.ego.trgt_leader:
+                dis2trgtleader = abs(self.ego.pos_longi - self.ego.trgt_leader.pos_longi)
+                ttc_tl = dis2trgtleader / max(self.ego.speed, 0.1)
+                r_safety = 0.7 * r_safety + 0.3 * (-1 + np.tanh(ttc_tl / 2.5))
             else:
-                r_safety = 0.7 * r_safety
+                r_safety = 0.7 * r_safety - 0.15
 
         rewards = np.array([r_comf, r_effi, r_time, r_speed, r_safety])
         total_reward = np.sum(weights * rewards)
@@ -153,8 +163,8 @@ class LaneChangeEnv(gym.Env):
         if collision_num > 0:
             print("collision ids: ", traci.simulation.getCollidingVehiclesIDList())
             print("egoid: ", self.ego.veh_id)
-            print("trgt_follower: ", self.ego.trgt_follower.veh_id)
-            print("trgt_leader: ", self.ego.trgt_leader.veh_id)
+            print("trgt_follower: ", self.ego.trgt_follower.veh_id if self.ego.trgt_follower else None)
+            print("trgt_leader: ", self.ego.trgt_leader.veh_id if self.ego.trgt_leader else None)
             self.is_collision = True
             done = True
         if self.timestep > self.max_timesteps:
