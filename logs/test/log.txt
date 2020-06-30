@@ -1,2 +1,0 @@
-Logging to /home/cxx/projects/Lane_change_RL/logs/test
-load_state method is deprecated, please use load_variables instead
