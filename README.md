@@ -4,7 +4,7 @@ Code accompanying graduation thesis "Automated Lane Change Strategy in Highway E
 # Dependencies
 - tensorflow-1.14
 - OpenAI baselines
-- Sumo-1.6
+- SUMO-1.6
 - mpi
 - mpi4py
 
