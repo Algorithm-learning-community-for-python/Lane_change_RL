@@ -104,6 +104,16 @@ NUM_EPS = 100
 IS_GUI = False
 ret_eval, danger_rate, crash_rate, level_1_danger_rate, level_2_danger_rate, coll_rate, success_rate, success_len = evaluate_ppo(NUM_EPS, IS_GUI)
 
+# reward_detail:  [ -0.54400734 -14.36594752   0.          -1.98679837 -22.94965776]
+# reward:  -39.84641098425234
+# danger_rate:  1.5
+# crash_rate:  0.08
+# level-1-danger_rate:  0.23
+# level-2-danger_rate:  0.02
+# collision_rate:  0.0
+# success_rate:  1.0
+# sucess_len:  55.08
+
 # f = open('../data/baseline_evaluation/testseed2.csv', 'w+')
 # safety_gap = 2
 # constraints_list = [3.0]  # [1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 20.0]

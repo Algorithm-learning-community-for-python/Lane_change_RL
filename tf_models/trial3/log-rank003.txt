@@ -1,2 +1,0 @@
-Logging to ../tf_models/trial3
-********** Iteration 0 ************

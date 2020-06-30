@@ -1,1 +1,12 @@
 .DS_Store
+.ipynb_checkpoints
+data
+dqn
+evaluate
+figures
+logs
+others
+plot
+ppo_old
+ppo_test
+tf_models_trial

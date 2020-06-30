@@ -331,7 +331,7 @@ class LaneChangeEnv(gym.Env):
 
     def reset(self, egoid=None, tlane=0, tfc=None, is_gui=False, sumoseed=None, randomseed=None):
         egoid = 'lane1.' + str(random.randint(1, 6)) if not egoid else egoid
-        tfc = np.random.choice([0, 1, 2]) if not tfc else tfc
+        tfc = np.random.choice([0, 1, 2]) if tfc is None else tfc
         if tfc == 0:
             cfg = '../map/ramp3/mapDenseSlow.sumo.cfg'
         elif tfc == 1:
@@ -339,7 +339,6 @@ class LaneChangeEnv(gym.Env):
         else:
             assert tfc == 2
             cfg = '../map/ramp3/mapDenseFast.sumo.cfg'
-
         sumoCmd_load = ['-c', cfg] + self.sumoCmd_base
         self.seed(randomseed)
         if not sumoseed:
