@@ -1,5 +1,6 @@
 # Intro
-Code accompanying graduation thesis "Automated Lane Change Strategy in Highway Environment Based on Deep Reinforcement Learning"
+Code accompanying graduation thesis "Automated Lane Change Strategy in Highway Environment Based on Deep Reinforcement Learning".
+Discrete action space version of published paper on IEEE IV 2020, [link](https://arxiv.org/pdf/2002.02667.pdf).
 
 # Dependencies
 - tensorflow-1.14
@@ -23,5 +24,15 @@ python restore.py
 - to evaluate current policy:
 ```shell script
 python evaluate.py
+```
+
+# Cite
+```
+@article{ye2020automated,
+  title={Automated Lane Change Strategy using Proximal Policy Optimization-based Deep Reinforcement Learning},
+  author={Ye, Fei and Cheng, Xuxin and Wang, Pin and Chan, Ching-Yao},
+  journal={arXiv preprint arXiv:2002.02667},
+  year={2020}
+}
 ```
 
